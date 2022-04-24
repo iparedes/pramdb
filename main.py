@@ -1,6 +1,21 @@
+import math
+
 from loadXLS import *
 from pramdb import *
-import math
+
+
+def risk(likelihood,impact):
+    r=likelihood*impact
+    risk=""
+    if r<=1:
+        risk="Negligible"
+    elif r<=4: # Watch out. Ibd risk matrix is not simmetrical
+        risk="Low"
+    elif r<=9:
+        risk="Medium"
+    else:
+        risk="High"
+    return (r,risk)
 
 # A loadXls
 # DB pramdb
@@ -34,7 +49,7 @@ def load_controls(A,DB):
         DB.commit()
 
 def Reduction_factor(eff):
-    f=math.pow(eff,4)*math.exp(eff-1)
+    f=math.pow(eff,1)*math.exp(eff-1)
     return 1-f
 
 
@@ -61,8 +76,13 @@ if __name__ == '__main__':
 
     scenarios=DB.id_scenario(A.assetName)
     for s in scenarios:
-        DB.scenario(s)
+        S=DB.scenario(s)
+        AssetName=DB.asset(S['AssetId'])
+        EventName=DB.event(S['EventId'])
+        ThreatLevel=S['ThreatLevel']
+
         R=DB.scenario_effectiveness(s)
+
         # Gets TSL as the maximum potential impact for the asset
         TSL=max([impact['Level'] for impact in A.impacts])
         # Identifies the ids of the impact categories with max impact
@@ -88,11 +108,18 @@ if __name__ == '__main__':
         redFLikelihood=Reduction_factor(ELikelihood)
         redFImpact=Reduction_factor(EImpact)
 
-        IImpact=max(A.impacts)
-        NImpact=IImpact*redFImpact
-        print ("Initial impact: ",IImpact)
+        NTLevel=ThreatLevel*redFLikelihood
+        print("Initial Threat Strength: ", ThreatLevel, " Updated Threat Strength:", NTLevel)
 
-    pass
+        IImpact=max([l['Level'] for l in A.impacts])
+        NImpact=IImpact*redFImpact
+        print ("Initial Impact: ",IImpact," Updated Impact:",NImpact)
+
+        risk=risk(NTLevel,NImpact)
+        print ("Risk is ",risk[1]," (",risk[0],")")
+        print ("The ineffective controls causing risk are: ",R['Controls']['Ineffective'])
+
+
 
 
 

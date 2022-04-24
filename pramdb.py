@@ -209,7 +209,7 @@ class Prams:
 
     def asset(self,assetid):
         sql="SELECT * FROM Assets WHERE Id=?"
-        var=(id,)
+        var=(assetid,)
         rows=self.__select_sql(sql,var)
         if rows:
             r=rows[0]
@@ -223,6 +223,21 @@ class Prams:
             print("Asset Id does not exist")
             return None
 
+    # Needs an event id
+    # Returns the event data
+    def event(self,id):
+        sql="SELECT * FROM ThreatEvents WHERE Id=?"
+        var=(id,)
+        rows=self.__select_sql(sql,var)
+        if rows:
+            r=rows[0]
+            name=r['Name']
+            desc=r['Description']
+            R={'Name':name,'Description':desc}
+            return R
+        else:
+            print("Event Id does not exist")
+
     # Needs an scenario id
     # Returns the scenario data
     def scenario(self,id):
@@ -230,8 +245,12 @@ class Prams:
         var=(id,)
         rows=self.__select_sql(sql,var)
         if rows:
-            asset=self.asset()
-            pass
+            r=rows[0]
+            assetid=r['Asset']
+            ThreatLevel=r['ThreatLevel']
+            eventid=r['Event']
+            R={'AssetId':assetid,'ThreatLevel':ThreatLevel,'EventId':eventid}
+            return R
         else:
             print("Scenario Id does not exist")
 
@@ -326,12 +345,12 @@ class Prams:
         eventid=r['Event']
 
 
-        # # get impacts for the asset
-        # impacts=self.impacts(assetid)
-        # # Gets TSL as the maximum potential impact for the asset
-        # TSL=max([impact['ImpactLevel'] for impact in impacts])
-        # # Identifies the ids of the impact categories with max impact
-        # CriCatIDs=[impact['ImpactType'] for impact in impacts if impact['ImpactLevel']==TSL ]
+        # get impacts for the asset
+        impacts=self.impacts(assetid)
+        # Gets TSL as the maximum potential impact for the asset
+        TSL=max([impact['ImpactLevel'] for impact in impacts])
+        # Identifies the ids of the impact categories with max impact
+        CriCatIDs=[impact['ImpactType'] for impact in impacts if impact['ImpactLevel']==TSL ]
 
         # CONTROL EFFECTIVENESS
         # get controls assessed in the asset that are applicable to the threat event
@@ -362,7 +381,14 @@ class Prams:
 
         # ASLs of all the controls assessed in the asset (some of them may not be applicable to the scenario)
         aux=self.asls(assetid)
-        asls={i['ControlId']:i['ASL'] for i in aux}
+        # get only the controls applicable to the Threat in this scenario
+        appl_aux=[e for e in aux if e['ControlId'] in appl_ctrlids]
+        # reshape the dictionary for easier access
+        asls={i['ControlId']:i['ASL'] for i in appl_aux}
+
+
+
+        # ctrls_asl_* are lists of 5 elements (one per SL) each one with a list of the controls that achieved that security level
         ctrls_asl_likelihood=[[] for i in range(5)]
         ctrls_asl_impact = [[] for i in range(5)]
         for a in controldic:
@@ -371,8 +397,17 @@ class Prams:
                 ctrls_asl_likelihood[asl].append(a)
             if controldic[a]['Impact']:
                 ctrls_asl_impact[asl].append(a)
-        # ctrls_asl_* are lists of 5 elements (one per SL) each one with a list of the controls that achieved that security level
-        Controls={'Likelihood':ctrls_asl_likelihood,'Impact':ctrls_asl_impact}
+
+
+        eff_ctrls=[]
+        ineff_ctrls=[]
+        for c in aux:
+            if c['ASL']>=TSL:
+                eff_ctrls.append(c['ControlId'])
+            else:
+                ineff_ctrls.append(c['ControlId'])
+
+        Controls={'Likelihood':ctrls_asl_likelihood,'Impact':ctrls_asl_impact,'Effective':eff_ctrls,'Ineffective':ineff_ctrls}
 
         Effectiveness=[]
         Effectiveness.append({})
