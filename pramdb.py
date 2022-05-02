@@ -2,7 +2,7 @@ from sqlite3 import connect,Row
 
 class Prams:
     def __init__(self):
-        self.conn=connect("d:\pramdb\pramdb.db")
+        self.conn=connect("pramdb.db")
 
         self.actorIntent={'Accidental':1, 'Malicious':2}
         self.actorOrigin = {'External': 1, 'Internal': 2}
@@ -334,6 +334,22 @@ class Prams:
     #         print("No assessment data")
 
 
+    def scenario_applicable_controls(self,id):
+        sql = "SELECT * FROM Scenarios where Id=?"
+        var = (id,)
+        rows = self.__select_sql(sql, var)
+        r = rows[0]
+        assetid = r['Asset']
+        eventid = r['Event']
+
+        # get controls assessed in the asset that are applicable to the threat event
+        sql = "SELECT ControlID FROM Assessment WHERE AssetId=? INTERSECT SELECT Control FROM ApplCtrlThreatEvent WHERE ThreatEvent=?"
+        var = (assetid, eventid,)
+
+        aux = self.__select_sql(sql, var)
+        # appl_ctrls has the list of applicable controls
+        appl_ctrlids = [i['ControlId'] for i in aux]
+        return appl_ctrlids
 
     def scenario_effectiveness(self,id):
         sql="SELECT * FROM Scenarios where Id=?"
