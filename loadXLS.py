@@ -1,6 +1,7 @@
+import re
+
 from openpyxl import load_workbook
 from openpyxl.utils.cell import *
-import re
 
 
 class AssessmentXLS:
@@ -58,4 +59,47 @@ class AssessmentXLS:
 
     def range_char(self, start, stop):
         return (chr(n) for n in range(ord(start), ord(stop) + 1))
+
+
+    # Creates a sheet with a given name
+    # Overwrites the sheet if it already exists
+    # sets the new sheet to the active sheet
+    def create_sheet(self,name):
+        snames=self.book.sheetnames
+        for s in snames:
+            if s==name:
+                sheet=self.book.get_sheet_by_name(name)
+                self.book.remove_sheet(sheet)
+        new_sheet=self.book.create_sheet(name)
+        self.book.save("assessment.xlsx")
+
+    def set_cell(self,row,column,value,sheetname=""):
+        if sheetname:
+            ws=self.book.get_sheet_by_name(sheetname)
+        else:
+            ws=self.book.active
+        ws.cell(row,column).value=value
+
+    def add_vector(self,row,column,vector,sheetname=""):
+        if sheetname:
+            ws=self.book.get_sheet_by_name(sheetname)
+        else:
+            ws=self.book.active
+        col=column
+
+        for v in vector:
+            r=type(v)
+            if r==str:
+                t='s'
+            else:
+                t='m'
+            ws.cell(row=row,column=col).value=v
+            ws.cell(row=row, column=col).data_type=t
+            cell=ws.cell(row=row,column=col)
+            col+=1
+        #self.book.save("assessment.xlsx")
+
+
+
+
 
