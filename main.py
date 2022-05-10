@@ -3,6 +3,19 @@ import math
 from loadXLS import *
 from pramdb import *
 
+STARTROW=2
+STARTCOL=2
+
+# Rows Likelihood, Cols Impact
+RISK_MATRIX=[
+    [0,0,0,0,0],
+    [0,1,1,1,1],
+    [0,1,1,2,3],
+    [0,1,2,3,4],
+    [0,1,3,4,4]
+]
+
+Risk_Names=["N/A","Negligible","Low","Medium","High"]
 
 def risk(likelihood,impact):
     r=likelihood*impact
@@ -21,12 +34,12 @@ def risk(likelihood,impact):
 # DB pramdb
 # Reads controls and applicability from Excel and loads it in the DB
 def load_controls(A,DB):
-    A.ws = A.book['Assessment']
-    e=A.table_to_list('TblThreatEvents')
+    #A.ws = A.book['Assessment']
+    e=A.table_to_list('TblThreatEvents','Assessment')
     events=[i['Threat Events'] for i in e]
 
-    A.ws=A.book['Controls']
-    controls = A.table_to_list('TblControls')
+    #A.ws=A.book['Controls']
+    controls = A.table_to_list('TblControls','Controls')
 
     for control in controls:
         ctrlid=control['Control ID']
@@ -61,18 +74,33 @@ def Reduction_factor(eff):
     f=math.pow(eff,1)*math.exp(eff-1)
     return 1-f
 
-def Results_table(DB,A):
-    titles=("Threat","Threat Level", "Asset Id","Asset Name","Impact Type","Impact Level","Standard","NIST Function",
-            "Type of Control","FR Title","Ctrl Id","Ctrl Name","ASL","Likelihood","Impact")
+def Results_table(DB, A, startrow=STARTROW,startcol=STARTCOL ):
+    titles=("Threat","Threat Level","Asset Id","Asset Name","Impact Type","Impact Level","Standard","NIST Function",
+            "Type of Control","FR Title","Ctrl Id","Ctrl Name","ASL","Likelihood","Impact","Gap","Eff Factor",
+            "Eff Factor Likelihood","Eff Factor Impact")
 
-    A.create_sheet("Results")
-    StartRow=2
-    StartCol=2
+    rows=[]
 
-    A.add_vector(StartRow,StartCol,titles,"Results")
+    # A.create_sheet("Results")
+    A.delete_table("data")
+    #A.book.save("assessment.xlsx")
+    #exit()
+
+
+
+    ImpactLevelColLetter=get_column_letter(startcol+titles.index("Impact Level"))
+    AslColLetter=get_column_letter(startcol+titles.index("ASL"))
+    GapColLetter = get_column_letter(startcol + titles.index("Gap"))
+    LikColLetter=get_column_letter(startcol + titles.index("Likelihood"))
+    ImpColLetter = get_column_letter(startcol + titles.index("Impact"))
+
+    rows.append(titles)
+    #A.add_vector(startrow, startcol, titles, "Results")
 
     scenarios=DB.id_scenario(A.assetName)
-    row=StartRow
+
+    row=startrow
+
     for s in scenarios:
         S=DB.scenario(s)
         #R=DB.scenario_effectiveness(s)
@@ -85,6 +113,7 @@ def Results_table(DB,A):
         ThreatLevel=S['ThreatLevel']
         Impacts=DB.impacts(AssetId)
         AssetName = Asset['Name']
+
         for i in Impacts:
             ImpactType=i['ImpactType']
             ImpactName=DB.name_impact_type(ImpactType)
@@ -102,28 +131,85 @@ def Results_table(DB,A):
                     appimpact = control['Impact']
                     asl=a['ASL']
 
-                    v=(EventName, ThreatLevel, AssetId,AssetName,ImpactName,ImpactLevel,standard,NISTfunction,
-                       typeofcontrol,FRtitle,cid,controlname,asl,applikelihood,appimpact)
                     row+=1
-                    A.add_vector(row,StartCol,v,"Results")
+                    Gap="="+ImpactLevelColLetter+str(row)+"-"+AslColLetter+str(row)
+                    EffImpact="=IF("+GapColLetter+str(row)+"<=0,1,-"+GapColLetter+str(row)+")"
 
-        # StartColLetter=get_column_letter(StartCol)
-        # EndColLetter=get_column_letter(StartCol+len(titles)-1)
-        # range=StartColLetter+str(StartRow)+":"+EndColLetter+str(row)
-        #
-        # try:
-        #     del A.ws.tables["data"]
-        # except:
-        #     pass
-        # tab=Table(displayName="data",name="data",ref=range,tableColumns=titles)
-        # style = TableStyleInfo(name="TableStyleMedium9", showFirstColumn=False,
-        #                        showLastColumn=False, showRowStripes=True, showColumnStripes=True)
-        # tab.tableStyleInfo = style
-        # A.ws.add_table(tab)
+                    EffFactorLikelihood="=IF("+LikColLetter+str(row)+"=0,0,IF("+GapColLetter+str(row)+"<=0,1,-"+GapColLetter+str(row)+"))"
+                    EffFactorImpact = "=IF(" + ImpColLetter + str(row) + "=0,0,IF(" + GapColLetter + str(
+                        row) + "<=0,1,-" + GapColLetter + str(row) + "))"
 
-        # tab=Table(displayName="XXX",ref="B2:C4")
-        # A.ws.add_table(tab)
+                    v=(EventName, ThreatLevel, AssetId,AssetName,ImpactName,ImpactLevel,standard,NISTfunction,
+                     typeofcontrol,FRtitle,cid,controlname,asl,applikelihood,appimpact,Gap,EffImpact,EffFactorLikelihood,
+                       EffFactorImpact)
+                    #A.add_vector(row,startcol,v,"Results")
+                    rows.append(v)
+
+        A.create_table("data",startrow,startcol,rows,"Results")
+
+        nrows=len(rows)
+        rows=[]
+        titlesSum=("Impact Type","TSL","# applicable controls","App Likelihood","App Impact","Sum Eff Likelihood",
+                   "Sum Eff Impact","Eff Likelihood","Eff Impact","Eff Likelihood adj","Eff Impact adj")
+        rows.append(titlesSum)
+
+        row=startrow
+        startcolsum=startcol+len(titles)+4
+        startcolsumLetter=get_column_letter(startcolsum)
+        ImpactTypeLetter=get_column_letter(startcol+titles.index("Impact Type"))
+        ImpactTypeCol="$"+ImpactTypeLetter+str(startrow+1)+":$"+ImpactTypeLetter+str(startrow+nrows-1)
+
+        AppLikLetter=get_column_letter(startcol+titles.index("Likelihood"))
+        AppLikCol="$"+AppLikLetter+str(startrow+1)+":$"+AppLikLetter+str(startrow+nrows-1)
+
+        AppImpLetter = get_column_letter(startcol + titles.index("Impact"))
+        AppImpCol="$"+AppImpLetter+str(startrow+1)+":$"+AppImpLetter+str(startrow+nrows-1)
+
+        EffFactorLetter=get_column_letter(startcol + titles.index("Eff Factor"))
+        EffFactorCol="$"+EffFactorLetter+str(startrow+1)+":$"+EffFactorLetter+str(startrow+nrows-1)
+
+        SumEffLikLetter=get_column_letter(startcolsum+titlesSum.index("Sum Eff Likelihood"))
+        SumEffImpLetter = get_column_letter(startcolsum + titlesSum.index("Sum Eff Impact"))
+
+        AppLikSumLetter=get_column_letter(startcolsum+titlesSum.index("App Likelihood"))
+        AppImpSumLetter = get_column_letter(startcolsum + titlesSum.index("App Impact"))
+
+        EffLikSumLetter=get_column_letter(startcolsum+titlesSum.index("Eff Likelihood"))
+        EffImpSumLetter = get_column_letter(startcolsum + titlesSum.index("Eff Impact"))
+
+        for i in Impacts:
+            row+=1
+            ImpactType=i['ImpactType']
+            ImpactName = DB.name_impact_type(ImpactType)
+            TSL=i['ImpactLevel']
+            numAppCtrls="=COUNTIF("+ImpactTypeCol+","+startcolsumLetter+str(row)+")"
+            numAppLikelihood="=COUNTIFS("+ImpactTypeCol+"," + startcolsumLetter + str(row) + "," + AppLikCol + ",1)"
+            numAppImpact = "=COUNTIFS(" + ImpactTypeCol+"," + startcolsumLetter + str(row) + "," + AppImpCol + ",1)"
+            sumEffLik="=SUMIFS("+EffFactorCol+","+ImpactTypeCol+"," + startcolsumLetter + str(row) + "," + AppLikCol + ",1)"
+            sumEffImp = "=SUMIFS(" + EffFactorCol + "," + ImpactTypeCol + "," + startcolsumLetter + str(row) + "," + AppImpCol + ",1)"
+            effLik="="+SumEffLikLetter+str(row)+"/"+AppLikSumLetter+str(row)
+            effImp = "=" + SumEffImpLetter + str(row) + "/" + AppImpSumLetter + str(row)
+            effLikAdj="="+AppLikLetter+str(row)+"IF("+EffLikSumLetter+str(row)+"<=0,0,"+EffLikSumLetter+str(row)+")"
+            effImpAdj = "="+AppImpLetter+str(row)+"IF(" + EffImpSumLetter + str(row) + "<=0,0," + EffImpSumLetter + str(row) + ")"
+
+            rows.append((ImpactName,TSL,numAppCtrls,numAppLikelihood,numAppImpact,sumEffLik,sumEffImp,effLik,effImp,effLikAdj,effImpAdj))
+
+        A.create_table("summary", startrow, startcolsum, rows, "Results")
+
+        rowAsset=startrow+len(rows)+2
+        rowThreat=rowAsset+1
+
+        A.set_cell(rowAsset,startcolsum,"Asset","Results")
+
+        # assetlist=DB.assets()
+        # assets=[a['Name'] for a in assetlist]
+        # assetstr=",".join(assets)
+        # A.add_data_validation(rowAsset,startcolsum+1,assetstr,"Results")
+
         A.book.save("assessment.xlsx")
+
+
+
 
 
 
@@ -131,7 +217,7 @@ def Results_table(DB,A):
 if __name__ == '__main__':
     DB=Prams()
     DB.initialize()
-    A=AssessmentXLS()
+    A=AssessmentXLS("assessment.xlsx")
 
     # load_controls(A,DB)
     # exit()

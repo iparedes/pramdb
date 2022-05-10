@@ -224,6 +224,12 @@ class Prams:
             print("Asset Id does not exist")
             return None
 
+    def assets(self):
+        sql="SELECT * FROM Assets"
+        var=()
+        rows=self.__select_sql(sql,var)
+        return rows
+
     # Needs an event id
     # Returns the event data
     def event(self,id):
