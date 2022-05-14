@@ -1,4 +1,5 @@
 import math
+from math import *
 
 from loadXLS import *
 from pramdb import *
@@ -18,17 +19,188 @@ RISK_MATRIX=[
 Risk_Names=["N/A","Negligible","Low","Medium","High"]
 
 def risk(likelihood,impact):
-    r=likelihood*impact
-    risk=""
-    if r<=1:
-        risk="Negligible"
-    elif r<=4: # Watch out. Ibd risk matrix is not simmetrical
-        risk="Low"
-    elif r<=9:
-        risk="Medium"
-    else:
-        risk="High"
+    l=floor(likelihood)
+    i=floor(impact)
+    r=RISK_MATRIX[l][i]
+    risk=Risk_Names[int(r)]
     return (r,risk)
+
+def reduction_factor(eff):
+    rf=eff*eff*exp(eff-1)
+    return 1-rf
+
+
+# Calculates the efficiency factor of a set of controls against a target
+# if the ASL equals or exceeds the target, adds one
+# else substracts the size of the gap, so it is totally possible to have a negative factor
+# Identifies, and returns the ineffective controls
+def efficiency_factor(ctrls,target):
+    ef=0
+    ineff_ctrls=[]
+    for c in ctrls:
+        gap=target-ctrls[c]
+        if gap<=0:
+            ef+=1
+        else:
+            ineff_ctrls.append(c)
+            ef-=gap
+    return (ef,ineff_ctrls)
+
+def scenario_risk(DB,sid):
+    S=DB.scenario(sid)
+    AssetId=S['AssetId']
+    Threatid=S['EventId']
+    ThreatLevel=S['ThreatLevel']
+
+    asls=DB.asls(AssetId)
+
+    # Controls applicable to the asset and the threat
+    appCtrls=DB.scenario_applicable_controls(sid)
+
+    impacts=DB.impacts(AssetId)
+    TSLs={}
+    for i in impacts:
+        level=i['ImpactLevel']
+        iType=DB.name_impact_type(i['ImpactType'])
+        TSLs[iType]=level
+
+    # Controls applicable to likelihood and/or impact
+    appCtrlsLikelihood={}
+    appCtrlsImpact={}
+    for c in appCtrls:
+        ctrl=DB.control(c)
+        if ctrl['Likelihood']:
+            appCtrlsLikelihood[c]=asls[c]
+        if ctrl['Impact']:
+            appCtrlsImpact[c]=asls[c]
+
+    efficiencyLikelihood={}
+    for k in TSLs:
+        target=TSLs[k]
+
+        ef=efficiency_factor(appCtrlsLikelihood,target)
+        if ef<=0:
+            efficiencyLikelihood[k]=0
+        else:
+            efficiencyLikelihood[k]=ef/len(appCtrlsLikelihood)
+
+    efficiencyImpact={}
+    for k in TSLs:
+
+
+        target=TSLs[k]
+        ef=efficiency_factor(appCtrlsImpact,target)
+        if ef<=0:
+            efficiencyImpact[k]=0
+        else:
+            efficiencyImpact[k]=ef/len(appCtrlsImpact)
+
+    RESULT={}
+    RESULT['InitialLikelihood']= {}
+    RESULT['InitialImpact'] = TSLs
+    RESULT['FinalLikelihood'] = {}
+    RESULT['FinalImpact']={}
+    RESULT['InitialRisk']={}
+    RESULT['FinalRisk'] = {}
+
+    # Calculate residual impacts and likelihood
+    # Initial likelihoood is the same across all the scenario as it depends only on the threat
+    # Initial impact depends on the asset and the impact type
+    likelihood1 = ThreatLevel
+    for k in TSLs:
+        impact1=TSLs[k]
+        eff=efficiencyImpact[k]
+        red_factor=reduction_factor(eff)
+        impact2=red_factor*impact1
+        RESULT['FinalImpact'][k]=impact2
+
+        RESULT['InitialLikelihood'][k]=likelihood1
+        eff=efficiencyLikelihood[k]
+        red_factor=reduction_factor(eff)
+        likelihood2=red_factor*likelihood1
+        RESULT['FinalLikelihood'][k] = likelihood2
+
+        risk1=risk(likelihood1,impact1)
+        risk2 = risk(likelihood2, impact2)
+
+        RESULT['InitialRisk'][k] = risk1
+        RESULT['FinalRisk'][k] = risk2
+
+    pass
+
+
+    # stores the number of controls meeting or exceeding the TSL in the index
+
+
+
+    # accountLikelihood=[0]*5
+    # for c in appCtrlsLikelihood:
+    #     asl=asls[c]
+    #     for i in range(asl,5):
+    #         accountLikelihood[i]+=1
+    # accountImpact=[0]*5
+    # for c in appCtrlsImpact:
+    #     asl=asls[c]
+    #     for i in range(asl,5):
+    #         accountImpact[i]+=1
+
+
+
+
+
+
+
+
+
+
+
+
+
+    # scenarios=DB.id_scenario(A.assetName)
+    # for s in scenarios:
+    #     S=DB.scenario(s)
+    #     AssetName=DB.asset(S['AssetId'])
+    #     EventName=DB.event(S['EventId'])
+    #     ThreatLevel=S['ThreatLevel']
+    #
+    #     R=DB.scenario_effectiveness(s)
+    #
+    #     # Gets TSL as the maximum potential impact for the asset
+    #     TSL=max([impact['Level'] for impact in A.impacts])
+    #     # Identifies the ids of the impact categories with max impact
+    #     CriCatIDs=[impact['Impact Type'] for impact in A.impacts if impact['Level']==TSL ]
+    #
+    #     ELikelihood=0.0
+    #     EImpact =0.0
+    #
+    #     for i in range(TSL,5):
+    #         ELikelihood += R['Effectiveness'][i]['Likelihood']
+    #         EImpact += R['Effectiveness'][i]['Impact']
+    #
+    #     # Calculate how many ctrls are applicable to likelihood and impact
+    #
+    #     NumLikelihood=sum([len(a) for a in R['Controls']['Likelihood']])
+    #     NumImpact = sum([len(a) for a in R['Controls']['Impact']])
+    #     ELikelihood=ELikelihood/NumLikelihood
+    #     EImpact = EImpact / NumImpact
+    #
+    #
+    #     print("Max TSL: ",TSL," in impact categories",CriCatIDs)
+    #     print("Control Efficiency for Prevention: ",f"{ELikelihood:.0%}",", for Recovery:",f"{EImpact:.0%}")
+    #     redFLikelihood=Reduction_factor(ELikelihood)
+    #     redFImpact=Reduction_factor(EImpact)
+    #
+    #     NTLevel=ThreatLevel*redFLikelihood
+    #     print("Initial Threat Strength: ", ThreatLevel, " Updated Threat Strength:", NTLevel)
+    #
+    #     IImpact=max([l['Level'] for l in A.impacts])
+    #     NImpact=IImpact*redFImpact
+    #     print ("Initial Impact: ",IImpact," Updated Impact:",NImpact)
+    #
+    #     risk=risk(NTLevel,NImpact)
+    #     print ("Risk is ",risk[1]," (",risk[0],")")
+    #     print ("The ineffective controls causing risk are: ",R['Controls']['Ineffective'])
+
 
 # A loadXls
 # DB pramdb
@@ -212,30 +384,32 @@ def Results_table(DB, A, startrow=STARTROW,startcol=STARTCOL ):
 
 
 
-
-
 if __name__ == '__main__':
     DB=Prams()
-    DB.initialize()
-    A=AssessmentXLS("assessment.xlsx")
+    #DB.initialize()
+    scenario_risk(DB,422)
+
+
+
+    #A=AssessmentXLS("assessment.xlsx")
 
     # load_controls(A,DB)
     # exit()
 
     # Load assessment data in DB
-    DB.add_asset(A.assetName,A.assetType)
-    for impact in A.impacts:
-        DB.set_impact(A.assetName,impact['Impact Type'],impact['Level'])
-
-    for asl in A.asls:
-        DB.set_asl(A.assetName,asl['Ctrl ID'],asl['ASL'])
-
-    for scenario in A.scenarios:
-        DB.create_scenario(A.assetName,scenario['Threat Level'],scenario['Threat Event'])
+    # DB.add_asset(A.assetName,A.assetType)
+    # for impact in A.impacts:
+    #     DB.set_impact(A.assetName,impact['Impact Type'],impact['Level'])
+    #
+    # for asl in A.asls:
+    #     DB.set_asl(A.assetName,asl['Ctrl ID'],asl['ASL'])
+    #
+    # for scenario in A.scenarios:
+    #     DB.create_scenario(A.assetName,scenario['Threat Level'],scenario['Threat Event'])
 
     #----------------------------------------------
 
-    Results_table(DB,A)
+    # Results_table(DB,A)
 
     # scenarios=DB.id_scenario(A.assetName)
     # for s in scenarios:

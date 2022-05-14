@@ -144,14 +144,16 @@ class Prams:
         except:
             return 0
 
-    # Returns ASLs of an asset (ControlID,ASL)
+    # Returns ASLs of an asset
+    # makes some tinkeing to return a dictionary with key:CtrlId and value asl
     def asls(self,idasset):
         #idasset = self.id_asset(asset)
         sql="SELECT ControlID,ASL FROM Assessment where AssetId=?"
         var=(idasset,)
         rows=self.__select_sql(sql,var)
+        asls={a['ControlId']:a['ASL'] for a in rows}
         try:
-            return rows
+            return asls
         except:
             return 0
 
@@ -342,6 +344,8 @@ class Prams:
     #         print("No assessment data")
 
 
+    # Returns a list of the control IDs that are applicable to the scenario
+    # Are applicable to the asset and the threat
     def scenario_applicable_controls(self,id):
         sql = "SELECT * FROM Scenarios where Id=?"
         var = (id,)
